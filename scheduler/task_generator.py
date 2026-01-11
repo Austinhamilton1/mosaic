@@ -1,0 +1,1 @@
+'''Generates tasks (e.g., map-reduce chunks).'''

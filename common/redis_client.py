@@ -1,0 +1,1 @@
+'''Shared redis connection status.'''
