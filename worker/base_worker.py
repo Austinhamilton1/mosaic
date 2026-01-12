@@ -1,1 +1,0 @@
-'''Base worker class with pull logic'''

@@ -1,1 +1,0 @@
-'''Abstract class for device metrics'''
