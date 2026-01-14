@@ -206,7 +206,7 @@ The DSL does **not** expose SIMD constructs.
 
 ## 12. Example Programs
 
-### Monte Carlo $ \pi $ Kernel
+### Monte Carlo $`\pi`$ Kernel
 
 ```
 kernel mc_pi() -> i32 {
