@@ -111,13 +111,21 @@ Expressions are pure and side-effect free.
 ### Comparison Operators
 
 | Operator | Result |
-| -------- | ----------- |
+| -------- | ------ |
 | `<` | `bool` |
 | `<=` | `bool` |
 | `>` | `bool` |
 | `>=` | `bool` |
 | `==` | `bool` |
 | `!=` | `bool` |
+
+### Logical Operators
+
+| Operator | Description |
+| -------- | ------ |
+| `&&` | Logical AND |
+| `\|\|` | Logical OR |
+| `!` | Logical NOT |
 
 ---
 
