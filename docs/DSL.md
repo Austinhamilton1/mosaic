@@ -31,10 +31,8 @@ The DSL provides a small set of built-in primitive types.
 | Type | Description |
 | ---- | ----------- |
 | `i32` | 32-bit signed integer (two's complement) |
-| `i64` | 64-bit signed integer (two's complement) |
 | `f32` | 32-bit IEEE 754 floating point |
-| `f64` | 64-bit IEEE 754 floating point |
-| `bool` | Boolean valud (`true` or `false`), stored as 1 byte |
+| `bool` | Boolean value (`true` or `false`), stored as 32-bit unsigned integer |
 
 ### Type Rules
 
@@ -171,7 +169,7 @@ The **final expression** in the program is the return value.
 ### Example
 
 ```
-let x: i64 = 500;
+let x: i32 = 500;
 
 if (x > 250) { 1 } else { 0 }
 ```

@@ -1,93 +1,755 @@
-#include <stdint.h>
-#include <vector>
-#include <x86intrin.h>
+#include <smmintrin.h>
 
-constexpr int LANES = 4;
-constexpr int MAX_STACK = 64;
-constexpr int MAX_SLOTS = 32;
+#ifndef __SSE4_1__
+#error "This VM requires SSE4.1 support. Compile with -msse4.1"
+#endif
 
-using Mask = uint8_t;   // Lower LANES bits used
-constexpr Mask ALL_LANES = (1 << LANES) - 1;
+#include "vm.h"
 
-/* Stack data structure for the stack-based SIMD VM. */
-struct Stack {
-    float data[MAX_STACK][LANES];
-    int sp;                         // Single shared stack pointer
-};
-
-/* Variable slots for variable lookup. */
-struct Slots {
-    int32_t i32_slot[MAX_SLOTS][LANES];
-    float f32_slot[MAX_SLOTS][LANES];
-    bool bool_slot[MAX_SLOTS][LANES];
-};
-
-class VM {
-private:
-    const char *bytecode;
-    int pc;
-
-    Mask mask;
-    std::vector<Mask> mask_stack;
-
-    Stack stack;
-    Slots slots;
-
-    inline __m128 compute_mask() {
-        return _mm_castsi128_ps(
-            _mm_set_epi32(
-                (this->mask & 8) ? -1 : 0,
-                (this->mask & 4) ? -1 : 0,
-                (this->mask & 2) ? -1 : 0,
-                (this->mask & 1) ? -1 : 0
-            )
+/*
+ * Push a local variable onto the stack.
+ * Arguments:
+ *     TypeTag type - Type of the variable.
+ *     int slot - Load the variable from this slot.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_load_var(TypeTag type, int slot) {
+    stack.sp++;
+    int sp = stack.sp;
+    if(sp >= MAX_STACK) return -1;
+    if(slot >= MAX_SLOTS || slot < 0) return -1;
+    
+    if(type == I32) {
+        _mm_storeu_si128(
+            (__m128i *)stack.data[sp].i32, 
+            _mm_loadu_si128((__m128i *)slots.i32_slot[slot])
         );
+    } else if(type == F32) {
+        _mm_storeu_ps(
+            stack.data[sp].f32, 
+            _mm_loadu_ps(slots.f32_slot[slot])
+        );
+    } else if(type == BOOL) {
+        _mm_storeu_si128(
+            (__m128i *)stack.data[sp].b, 
+            _mm_loadu_si128((__m128i *)slots.bool_slot[slot])
+        );
+    } else {
+        return -1;
     }
 
-    /*
-     * Add two values (SIMD optimized).
-     */
-    void simd_add() {
-        int sp = this->stack.sp;
+    return 0;
+}
 
-        __m128 a = _mm_load_ps(this->stack.data[sp-2]);
-        __m128 b = _mm_load_ps(this->stack.data[sp-1]);
+/*
+ * Pop the top value from the stack and set a variable to this value.
+ * Arguments:
+ *     TypeTag type - Type of the variable.
+ *     int slot - Location of the variable.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_store_var(TypeTag type, int slot) {
+    int sp = stack.sp;
+
+    if(sp < 0) return -1;
+    if(slot >= MAX_SLOTS || slot < 0) return -1;
+
+    if(type == I32) {
+        _mm_storeu_si128(
+            (__m128i *)slots.i32_slot[slot],
+            _mm_loadu_si128((__m128i *)stack.data[sp].i32)
+        );
+    } else if(type == F32) {
+        _mm_storeu_ps(
+            slots.f32_slot[slot],
+            _mm_loadu_ps(stack.data[sp].f32)
+        );
+    } else if(type == BOOL) {
+        _mm_storeu_si128(
+            (__m128i *)slots.bool_slot[slot],
+            _mm_loadu_si128((__m128i *)stack.data[sp].b)
+        );
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Execute an ADD instruction.
+ * Arguments:
+ *     TypeTag type - The types of values being operated on.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_add(TypeTag type) {
+    int sp = stack.sp;
+
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+
+        __m128i result = _mm_add_epi32(a, b);
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-1].i32, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
         __m128 result = _mm_add_ps(a, b);
 
-        // Apply mask
-        __m128 mask = compute_mask();
-        result = _mm_or_ps(
-            _mm_and_ps(mask, result),
-            _mm_andnot_ps(mask, a)      // Leave the inactive lanes untouched
-        );
-
-        _mm_store_ps(this->stack.data[sp-2], result);
-        this->stack.sp--;
+        _mm_storeu_ps(stack.data[sp-1].f32, result);
+    } else {
+        return -1;
     }
 
-    void simd_sub() {
-        int sp = this->stack.sp;
+    stack.sp--;
+    return 0;
+}
 
-        __m128 a = _mm_load_ps(this->stack.data[sp-2]);
-        __m128 b = _mm_load_ps(this->stack.data[sp-1]);
+/*
+ * Execute a SUB instruction.
+ * Arguments:
+ *     TypeTag type - The types of values being operated on.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_sub(TypeTag type) {
+    int sp = stack.sp;
+
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+
+        __m128i result = _mm_sub_epi32(a, b);
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-1].i32, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
         __m128 result = _mm_sub_ps(a, b);
 
-        // Apply mask
-        __m128 mask = compute_mask();
-        result = _mm_or_ps(
-            _mm_and_ps(mask, result),
-            _mm_andnot_ps(mask, a)      // Leave the inactive lanes untouched
-        );
-
-        _mm_store_ps(this->stack.data[sp-2], result);
-        this->stack.sp--;
+        _mm_storeu_ps(stack.data[sp-1].f32, result);
+    } else {
+        return -1;
     }
 
-public:
-    VM(const char *bytecode) : 
-        bytecode(bytecode), pc(0), mask(ALL_LANES) {}
+    stack.sp--;
+    return 0;
+}
 
-    ~VM() = default;
-};
+/*
+ * Execute a MUL instruction.
+ * Arguments:
+ *     TypeTag type - The types of values being operated on.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_mul(TypeTag type) {
+    int sp = stack.sp;
+
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+
+        __m128i result = _mm_mullo_epi32(a, b);
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-1].i32, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+
+        __m128 result = _mm_mul_ps(a, b);
+
+        _mm_storeu_ps(stack.data[sp-1].f32, result);
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Execute a DIV instruction.
+ * Arguments:
+ *     TypeTag type - The types of values being operated on.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_div(TypeTag type) {
+    int sp = stack.sp;
+
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        // Intel does not support vector division of integers, do it manually
+        for(int i = 0; i < LANES; i++) {
+            int32_t a = stack.data[sp-1].i32[i];
+            int32_t b = stack.data[sp].i32[i];
+            stack.data[sp-1].i32[i] = a / b;
+        }
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+
+        __m128 result = _mm_div_ps(a, b);
+
+        _mm_storeu_ps(stack.data[sp-1].f32, result);
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Execute a MOD instruction.
+ * Arguments:
+ *     TypeTag type - The types of values being operated on.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_mod(TypeTag type) {
+    int sp = stack.sp;
+
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        for(int i = 0; i < LANES; i++) {
+            // Intel does not support vector modulo of integers, do it manually
+            int32_t a = stack.data[sp-1].i32[i];
+            int32_t b = stack.data[sp].i32[i];
+            stack.data[sp-1].i32[i] = a % b;
+        }
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Compare a < b.
+ * Arguments:
+ *     TypeTag type - Type of values being compared.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_cmp_lt(TypeTag type) {
+    int sp = stack.sp;
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __m128i result = _mm_cmplt_epi32(a, b);
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+
+        __m128 result = _mm_cmplt_ps(a, b);
+
+        _mm_storeu_si128(
+            (__m128i *)stack.data[sp-1].b, 
+            _mm_castps_si128(result) 
+        );
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Compare a <= b.
+ * Arguments:
+ *     TypeTag type - Type of values being compared.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_cmp_lte(TypeTag type) {
+    int sp = stack.sp;
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+
+        __m128i ones = _mm_set1_epi32(-1);
+        __m128i result = _mm_xor_si128(
+            _mm_cmplt_epi32(b, a),
+            ones
+        );
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+
+        __m128 result = _mm_cmple_ps(a, b);
+        _mm_storeu_si128(
+            (__m128i *)stack.data[sp-1].b,
+            _mm_castps_si128(result)
+        );
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Compare a > b.
+ * Arguments:
+ *     TypeTag type - Type of values being compared.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_cmp_gt(TypeTag type) {
+    int sp = stack.sp;
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __m128i result = _mm_cmplt_epi32(b, a);
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+
+        __m128 result = _mm_cmpgt_ps(a, b);
+        _mm_storeu_si128(
+            (__m128i *)stack.data[sp-1].b,
+            _mm_castps_si128(result)
+        );
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Compare a >= b.
+ * Arguments:
+ *     TypeTag type - Type of values being compared.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_cmp_gte(TypeTag type) {
+    int sp = stack.sp;
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+       
+        __m128i ones = _mm_set1_epi32(-1);
+        __m128i result = _mm_xor_si128(
+            _mm_cmplt_epi32(a, b),
+            ones
+        );
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+
+        __m128 result = _mm_cmpge_ps(a, b);
+        _mm_storeu_si128(
+            (__m128i *)stack.data[sp-1].b,
+            _mm_castps_si128(result)
+        );
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Compare a == b.
+ * Arguments:
+ *     TypeTag type - Type of values being compared.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_cmp_eq(TypeTag type) {
+    int sp = stack.sp;
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __m128i result = _mm_cmpeq_epi32(a, b);
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+
+        __m128 result = _mm_cmpeq_ps(a, b);
+        _mm_storeu_si128(
+            (__m128i *)stack.data[sp-1].b,
+            _mm_castps_si128(result)
+        );
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Compare a != b.
+ * Arguments:
+ *     TypeTag type - Type of values being compared.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_cmp_ne(TypeTag type) {
+    int sp = stack.sp;
+    if(sp < 1) return -1;
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        
+        __m128i ones = _mm_set1_epi32(-1);
+        __m128i result = _mm_xor_si128(
+            _mm_cmpeq_epi32(b, a),
+            ones
+        );
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+
+        __m128 result = _mm_cmpneq_ps(a, b);
+        _mm_storeu_si128(
+            (__m128i *)stack.data[sp-1].b,
+            _mm_castps_si128(result)
+        );
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Execute an AND instruction.
+ * Arguments:
+ *     TypeTag type - The types of values being operated on.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_and(TypeTag type) {
+    int sp = stack.sp;
+
+    if(sp < 1) return -1;
+
+    if(type == BOOL) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+
+        __m128i result = _mm_and_si128(a, b);
+
+        _mm_storeu_si128((__m128i *)stack.data[sp].i32, result);
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Execute an OR instruction.
+ * Arguments:
+ *     TypeTag type - The types of values being operated on.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_or(TypeTag type) {
+    int sp = stack.sp;
+
+    if(sp < 1) return -1;
+
+    if(type == BOOL) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+
+        __m128i result = _mm_or_si128(a, b);
+
+        _mm_storeu_si128((__m128i *)stack.data[sp].i32, result);
+    } else {
+        return -1;
+    }
+
+    stack.sp--;
+    return 0;
+}
+
+/*
+ * Execute a NOT instruction.
+ * Arguments:
+ *     TypeTag type - The types of values being operated on.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_not(TypeTag type) {
+    int sp = stack.sp;
+
+    if(sp < 0) return -1;
+
+    if(type == BOOL) {
+        // Intel doesn't support direct NOT but XOR 1 is the same operation
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __m128i ones = _mm_set1_epi32(-1);
+
+        __m128i result = _mm_xor_si128(a, ones);
+
+        _mm_storeu_si128((__m128i *)stack.data[sp].i32, result);
+    } else {
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
+ * Executes a SELECT instruction.
+ * Arguments:
+ *     TypeTag type - Return type of the SELECT condition.
+ * Returns:
+ *     int - 0 on succes, -1 on failure.
+ */
+int VM::simd_select(TypeTag type) {
+    int sp = stack.sp;
+
+    if(sp < 2) return -1;
+
+    __m128i cond = _mm_loadu_si128((__m128i *)stack.data[sp-2].b);
+
+    if(type == I32) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+
+        // Select statement is (cond) ? a : b
+        __m128i result = _mm_or_si128(
+            _mm_and_si128(cond, a),
+            _mm_andnot_si128(cond, b)
+        );
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-2].i32, result);
+    } else if(type == F32) {
+        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
+        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __m128 cond_ps = _mm_castsi128_ps(cond);
+
+        // Select statement is (cond) ? a : b
+        __m128 result = _mm_or_ps(
+            _mm_and_ps(cond_ps, a),
+            _mm_andnot_ps(cond_ps, b)
+        );
+
+        _mm_storeu_ps(stack.data[sp-2].f32, result);
+    } else if(type == BOOL) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].b);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].b);
+
+        // Select statement is (cond) ? a : b
+        __m128i result = _mm_or_si128(
+            _mm_and_si128(cond, a),
+            _mm_andnot_si128(cond, b)
+        );
+
+        _mm_storeu_si128((__m128i *)stack.data[sp-2].b, result);
+    } else {
+        return -1;
+    }
+
+    stack.sp -= 2;
+    return 0;
+}
+
+/*
+ * Random number generator that implements xorshift32.
+ * Arguments:
+ *     __m128i x - Seed.
+ * Returns:
+ *     __m128i - Random number.
+ */
+static inline __m128i xorshift32(__m128i x) {
+    x = _mm_xor_si128(x, _mm_slli_epi32(x, 13));
+    x = _mm_xor_si128(x, _mm_srli_epi32(x, 17));
+    x = _mm_xor_si128(x, _mm_slli_epi32(x, 5));
+    return x;
+}
+
+/*
+ * Generate a random float in the range [0.0, 1.0).
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_rand() {
+    stack.sp++;
+    int sp = stack.sp;
+
+    if(sp >= MAX_STACK) return -1;
+
+    // Advance RNG
+    rng_state = xorshift32(rng_state);
+
+    __m128i mantissa = _mm_srli_epi32(rng_state, 9);    // Keep 23 bits
+    __m128i one = _mm_set1_epi32(0x3F800000);           // 1.0f
+
+    __m128 f = _mm_castsi128_ps(_mm_or_si128(mantissa, one));
+    f = _mm_sub_ps(f, _mm_set1_ps(1.0f));
+
+    _mm_storeu_ps(stack.data[sp].f32, f);
+
+    return 0;
+}
+
+/*
+ * Instruction execution dispatcher.
+ */
+VMReturnValue& VM::run() {
+    while(true) {
+        Instruction instr = bytecode[pc];
+
+        switch(instr.opcode) {
+        case PUSH_CONST:
+            if(instr.type == I32) {
+                if(simd_push_const<int32_t>(instr.const_int) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            }
+            if(instr.type == F32) {
+                if(simd_push_const<float>(instr.const_float) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            }
+            if(instr.type == BOOL) {
+                if(simd_push_const<bool>(instr.const_bool) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            }
+            break;
+        case LOAD_VAR:
+            if(simd_load_var(instr.type, instr.slot) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case STORE_VAR:
+            if(simd_store_var(instr.type, instr.slot) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case ADD:
+            if(simd_add(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case SUB:
+            if(simd_sub(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case MUL:
+            if(simd_mul(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case DIV:
+            if(simd_div(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case MOD:
+            if(simd_mod(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case CMP_LT:
+            if(simd_cmp_lt(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case CMP_LTE:
+            if(simd_cmp_lte(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case CMP_GT:
+            if(simd_cmp_gt(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case CMP_GTE:
+            if(simd_cmp_gte(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case CMP_EQ:
+            if(simd_cmp_eq(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+        
+        case CMP_NE:
+            if(simd_cmp_ne(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case SELECT:
+            if(simd_select(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case RAND:
+            if(simd_rand() < 0) { retval.type = KERNEL_ERROR; return retval; }
+            break;
+
+        case RETURN:
+            // Bounds check
+            if(stack.sp < 0 || stack.sp >= MAX_STACK) { retval.type = KERNEL_ERROR; return retval; }
+
+            // Aggregate the final return values
+            if(retval.type == KERNEL_I32) {
+                __m128i results = _mm_loadu_si128((__m128i *)stack.data[stack.sp].i32);
+                _mm_storeu_si128((__m128i *)retval.result_int, results);
+            } else if(retval.type == KERNEL_F32) {
+                __m128 results = _mm_loadu_ps(stack.data[stack.sp].f32);
+                _mm_storeu_ps(retval.result_float, results);
+            } else if(retval.type == KERNEL_BOOL) {
+                __m128i results = _mm_loadu_si128((__m128i *)stack.data[stack.sp].b);
+                _mm_storeu_si128((__m128i *)retval.result_bool, results);
+            } else {
+                retval.type = KERNEL_ERROR;
+            }
+
+            return retval;
+        }
+
+        pc++;
+    }
+}
+
+/*
+ * Reset the VM to run again.
+ */
+void VM::reset() {
+    pc = 0;
+    memset(&stack, 0, sizeof(stack));
+    stack.sp = -1;
+    memset(&slots, 0, sizeof(slots));
+    memset(&retval, 0, sizeof(retval));
+    rng_state = _mm_set_epi32(0x12345678, 0x87654321, 0xCAFEBABE, 0xDEADBEEF);
+}

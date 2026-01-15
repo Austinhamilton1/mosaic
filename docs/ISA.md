@@ -26,7 +26,7 @@ The Mosaic Kernel VM executes **stack-based bytecode** compiled from the Mosaic 
 | --------- | ----------- |
 | **Stack** | LIFO stack for intermediate values (typed) |
 | **Local Slots** | Each variable has a dedicated slot |
-| **Constants** | Stored in bytecode constant pool |
+| **Constants** | Stored in bytecode |
 
 ---
 
@@ -35,10 +35,8 @@ The Mosaic Kernel VM executes **stack-based bytecode** compiled from the Mosaic 
 | Type | Stack Representation |
 | ---- | -------------------- |
 | `i32` | 32-bit signed integer |
-| `i64` | 64-bit signed integer |
 | `f32` | 32-bit IEEE float |
-| `f64` | 64-bit IEEE float |
-| `bool` | 1 byte (0=false, 1=true) |
+| `bool` | 32-bit unsigned integer (0=false, >0=true) |
 
 ---
 
@@ -60,7 +58,7 @@ The Mosaic Kernel VM executes **stack-based bytecode** compiled from the Mosaic 
 
 | Opcode | Operands | Description |
 | ------ | -------- | ----------- |
-| `PUSH_CONST <idx>` | Constant pool index | Pushes a constant onto the stack |
+| `PUSH_CONST <const>` | Constant value | Pushes a constant onto the stack |
 | `LOAD_VAR <slot>` | Slot index | Pushes variable value from local slot onto the stack |
 | `STORE_VAR <slot>` | Slot index | Pops value from stack and stores into local slot |
 | `POP` | - | Pops top value from stack |
@@ -74,7 +72,6 @@ The Mosaic Kernel VM executes **stack-based bytecode** compiled from the Mosaic 
 | `MUL` | `a b -> a*b` | Pop two operands, push product |
 | `DIV` | `a b -> a/b` | Pop two operands, push quotient |
 | `MOD` | `a b -> a%b` | Pop two operands (integers), push remainder |
-| `POW` | `a b -> a^b` | Pop two operands, push a raised to b |
 
 ### 5.3 Comparison Operations
 
@@ -83,7 +80,7 @@ The Mosaic Kernel VM executes **stack-based bytecode** compiled from the Mosaic 
 | `CMP_LT` | `a b -> a<b` | Pop two operands, push `bool` |
 | `CMP_LTE` | `a b -> a<=b` | Pop two operands, push `bool` |
 | `CMP_GT` | `a b -> a>b` | Pop two operands, push `bool` |
-| `CMP_GE` | `a b -> a>=b` | Pop two operands, push `bool` |
+| `CMP_GTE` | `a b -> a>=b` | Pop two operands, push `bool` |
 | `CMP_EQ` | `a b -> a==b` | Pop two operands, push `bool`|
 | `CMP_NE` | `a b -> a!=b` | Pop two operands, push `bool` |
 
@@ -97,10 +94,9 @@ The Mosaic Kernel VM executes **stack-based bytecode** compiled from the Mosaic 
 
 ### 5.5 Control Flow
 
-| Opcode | Operands | Description |
+| Opcode | Stack Behavior | Description |
 | ------ | -------- | ----------- |
-| `JMP <offset>` | Bytecode offset | Unconditional jump to offset |
-| `JMP_IF_FALSE <offset>` | Bytecode offset | Pop top value (bool). If false, jump to offset |
+| `SELECT` | `a.cond b.cond -> cond ? a : b` | Pop two values, if the current mask is true, push first value, else push second value.  | 
 
 ### 5.6 Random Number Generation
 
@@ -145,14 +141,11 @@ LOAD_VAR {y_slot}
 LOAD_VAR {y_slot}
 MUL
 ADD
-PUSH_CONST {const_1.0}
-CMP_LE
-JMP_IF_FALSE L1
-PUSH_CONST {const_1}
-JMP L2
-L1:
-PUSH_CONST {const_0}
-L2:
+PUSH_CONST 1.0f
+CMP_LTE
+PUSH_CONST 1
+PUSH_CONST 0
+SELECT
 RETURN
 ```
 
@@ -171,7 +164,6 @@ Each compiled kernel bytecode includes:
 - Kernel name
 - Argument names and types
 - Return type
-- Constant pool
 - Bytecode length
 
 This metadata is used by:
