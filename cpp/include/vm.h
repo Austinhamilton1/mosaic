@@ -2,8 +2,8 @@
 #define VM_H
 
 #include <stdint.h>
-#include <vector>
 #include <smmintrin.h>
+#include <string.h>
 
 constexpr int LANES = 4;
 constexpr int MAX_STACK = 64;
@@ -112,51 +112,43 @@ private:
 
     VMReturnValue retval;
 
-    /* Stack operations. */
-    int simd_push_const(float constant) {
-        __m128 const_vec = _mm_set1_ps(constant);
-        _mm_storeu_ps(stack.data[stack.sp+1].f32, const_vec);
-        return 0;
-    }
-    int simd_push_const(int32_t constant) {
-        __m128i const_vec = _mm_set1_epi32(constant);
-        _mm_storeu_si128((__m128i *)stack.data[stack.sp].i32, const_vec);
-        return 0;
-    }
-    int simd_push_const(bool constant) {
-        __m128i const_vec = _mm_set1_epi32(constant ? -1 : 0);
-        _mm_storeu_si128((__m128i *)stack.data[stack.sp].b, const_vec);
-        return 0;
-    }
+    using OpHandler = int (VM::*)(const Instruction&);
 
-    int simd_load_var(TypeTag type, int slot);
-    int simd_store_var(TypeTag type, int slot);
+    static const OpHandler dispatch[];
+
+    /* Stack operations. */
+    int simd_push_const(const Instruction& instruction);
+    int simd_load_var(const Instruction& instruction);
+    int simd_store_var(const Instruction& instruction);
 
     /* Mathematical operations. */
-    int simd_add(TypeTag type);
-    int simd_sub(TypeTag type);
-    int simd_mul(TypeTag type);
-    int simd_div(TypeTag type);
-    int simd_mod(TypeTag type);
+    int simd_add(const Instruction& instruction);
+    int simd_sub(const Instruction& instruction);
+    int simd_mul(const Instruction& instruction);
+    int simd_div(const Instruction& instruction);
+    int simd_mod(const Instruction& instruction);
 
     /* Comparison operations. */
-    int simd_cmp_lt(TypeTag type);
-    int simd_cmp_lte(TypeTag type);
-    int simd_cmp_gt(TypeTag type);
-    int simd_cmp_gte(TypeTag type);
-    int simd_cmp_eq(TypeTag type);
-    int simd_cmp_ne(TypeTag type);
+    int simd_cmp_lt(const Instruction& instruction);
+    int simd_cmp_lte(const Instruction& instruction);
+    int simd_cmp_gt(const Instruction& instruction);
+    int simd_cmp_gte(const Instruction& instruction);
+    int simd_cmp_eq(const Instruction& instruction);
+    int simd_cmp_ne(const Instruction& instruction);
 
     /* Logical operations. */
-    int simd_and(TypeTag type);
-    int simd_or(TypeTag type);
-    int simd_not(TypeTag type);
+    int simd_and(const Instruction& instruction);
+    int simd_or(const Instruction& instruction);
+    int simd_not(const Instruction& instruction);
 
     /* Branching operations. */
-    int simd_select(TypeTag type);
+    int simd_select(const Instruction& instruction);
 
     /* Random number generator operations. */
-    int simd_rand();
+    int simd_rand(const Instruction& instruction);
+
+    /* Return from the VM. */
+    int simd_return(const Instruction& instruction);
 
 public:
     VM(const Instruction *bytecode) 
@@ -170,6 +162,7 @@ public:
 
     VMReturnValue& run();
     void reset();
+    void set_return_type(VMReturnType type);
 };
 
 #endif

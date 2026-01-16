@@ -6,34 +6,82 @@
 
 #include "vm.h"
 
+const VM::OpHandler VM::dispatch[] = {
+    &VM::simd_push_const,
+    &VM::simd_load_var,
+    &VM::simd_store_var,
+    &VM::simd_add,
+    &VM::simd_sub,
+    &VM::simd_mul,
+    &VM::simd_div,
+    &VM::simd_mod,
+    &VM::simd_cmp_lt,
+    &VM::simd_cmp_lte,
+    &VM::simd_cmp_gt,
+    &VM::simd_cmp_gte,
+    &VM::simd_cmp_eq,
+    &VM::simd_cmp_ne,
+    &VM::simd_and,
+    &VM::simd_or,
+    &VM::simd_not,
+    &VM::simd_select,
+    &VM::simd_rand,
+    &VM::simd_return,
+};
+
 /*
- * Push a local variable onto the stack.
+ * Pushes a constant to the top of the stack.
  * Arguments:
- *     TypeTag type - Type of the variable.
- *     int slot - Load the variable from this slot.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_load_var(TypeTag type, int slot) {
+int VM::simd_push_const(const Instruction& instruction) {
     stack.sp++;
     int sp = stack.sp;
     if(sp >= MAX_STACK) return -1;
-    if(slot >= MAX_SLOTS || slot < 0) return -1;
+
+    if(instruction.type == I32) {
+        __m128i const_vec = _mm_set1_epi32(instruction.const_int);
+        _mm_storeu_si128((__m128i *)stack.data[sp].i32, const_vec);
+    } else if(instruction.type == F32) {
+        __m128 const_vec = _mm_set1_ps(instruction.const_float);
+        _mm_storeu_ps(stack.data[stack.sp].f32, const_vec);
+    } else if(instruction.type == BOOL) {
+        __m128i const_vec = _mm_set1_epi32(instruction.const_bool ? -1 : 0);
+        _mm_storeu_si128((__m128i *)stack.data[sp].b, const_vec);
+    }
     
-    if(type == I32) {
+    return 0;
+}
+
+/*
+ * Push a local variable onto the stack.
+ * Arguments:
+ *     const Instruction& instruction - Current context.
+ * Returns:
+ *     int - 0 on success, -1 on failure.
+ */
+int VM::simd_load_var(const Instruction& instruction) {
+    stack.sp++;
+    int sp = stack.sp;
+    if(sp >= MAX_STACK) return -1;
+    if(instruction.slot >= MAX_SLOTS || instruction.slot < 0) return -1;
+    
+    if(instruction.type == I32) {
         _mm_storeu_si128(
             (__m128i *)stack.data[sp].i32, 
-            _mm_loadu_si128((__m128i *)slots.i32_slot[slot])
+            _mm_loadu_si128((__m128i *)slots.i32_slot[instruction.slot])
         );
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         _mm_storeu_ps(
             stack.data[sp].f32, 
-            _mm_loadu_ps(slots.f32_slot[slot])
+            _mm_loadu_ps(slots.f32_slot[instruction.slot])
         );
-    } else if(type == BOOL) {
+    } else if(instruction.type == BOOL) {
         _mm_storeu_si128(
             (__m128i *)stack.data[sp].b, 
-            _mm_loadu_si128((__m128i *)slots.bool_slot[slot])
+            _mm_loadu_si128((__m128i *)slots.bool_slot[instruction.slot])
         );
     } else {
         return -1;
@@ -45,30 +93,29 @@ int VM::simd_load_var(TypeTag type, int slot) {
 /*
  * Pop the top value from the stack and set a variable to this value.
  * Arguments:
- *     TypeTag type - Type of the variable.
- *     int slot - Location of the variable.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_store_var(TypeTag type, int slot) {
+int VM::simd_store_var(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 0) return -1;
-    if(slot >= MAX_SLOTS || slot < 0) return -1;
+    if(instruction.slot >= MAX_SLOTS || instruction.slot < 0) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         _mm_storeu_si128(
-            (__m128i *)slots.i32_slot[slot],
+            (__m128i *)slots.i32_slot[instruction.slot],
             _mm_loadu_si128((__m128i *)stack.data[sp].i32)
         );
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         _mm_storeu_ps(
-            slots.f32_slot[slot],
+            slots.f32_slot[instruction.slot],
             _mm_loadu_ps(stack.data[sp].f32)
         );
-    } else if(type == BOOL) {
+    } else if(instruction.type == BOOL) {
         _mm_storeu_si128(
-            (__m128i *)slots.bool_slot[slot],
+            (__m128i *)slots.bool_slot[instruction.slot],
             _mm_loadu_si128((__m128i *)stack.data[sp].b)
         );
     } else {
@@ -82,23 +129,23 @@ int VM::simd_store_var(TypeTag type, int slot) {
 /*
  * Execute an ADD instruction.
  * Arguments:
- *     TypeTag type - The types of values being operated on.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_add(TypeTag type) {
+int VM::simd_add(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
 
         __m128i result = _mm_add_epi32(a, b);
 
         _mm_storeu_si128((__m128i *)stack.data[sp-1].i32, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -116,23 +163,23 @@ int VM::simd_add(TypeTag type) {
 /*
  * Execute a SUB instruction.
  * Arguments:
- *     TypeTag type - The types of values being operated on.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_sub(TypeTag type) {
+int VM::simd_sub(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
 
         __m128i result = _mm_sub_epi32(a, b);
 
         _mm_storeu_si128((__m128i *)stack.data[sp-1].i32, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -150,23 +197,23 @@ int VM::simd_sub(TypeTag type) {
 /*
  * Execute a MUL instruction.
  * Arguments:
- *     TypeTag type - The types of values being operated on.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_mul(TypeTag type) {
+int VM::simd_mul(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
 
         __m128i result = _mm_mullo_epi32(a, b);
 
         _mm_storeu_si128((__m128i *)stack.data[sp-1].i32, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -184,23 +231,27 @@ int VM::simd_mul(TypeTag type) {
 /*
  * Execute a DIV instruction.
  * Arguments:
- *     TypeTag type - The types of values being operated on.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_div(TypeTag type) {
+int VM::simd_div(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         // Intel does not support vector division of integers, do it manually
         for(int i = 0; i < LANES; i++) {
             int32_t a = stack.data[sp-1].i32[i];
             int32_t b = stack.data[sp].i32[i];
+
+            // Divide by zero error
+            if(b == 0) return -1;
+
             stack.data[sp-1].i32[i] = a / b;
         }
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -218,20 +269,24 @@ int VM::simd_div(TypeTag type) {
 /*
  * Execute a MOD instruction.
  * Arguments:
- *     TypeTag type - The types of values being operated on.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_mod(TypeTag type) {
+int VM::simd_mod(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         for(int i = 0; i < LANES; i++) {
             // Intel does not support vector modulo of integers, do it manually
             int32_t a = stack.data[sp-1].i32[i];
             int32_t b = stack.data[sp].i32[i];
+            
+            // Divide by zero error
+            if(b == 0) return -1;
+
             stack.data[sp-1].i32[i] = a % b;
         }
     } else {
@@ -245,21 +300,21 @@ int VM::simd_mod(TypeTag type) {
 /*
  * Compare a < b.
  * Arguments:
- *     TypeTag type - Type of values being compared.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_cmp_lt(TypeTag type) {
+int VM::simd_cmp_lt(const Instruction& instruction) {
     int sp = stack.sp;
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
         __m128i result = _mm_cmplt_epi32(a, b);
 
         _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -280,15 +335,15 @@ int VM::simd_cmp_lt(TypeTag type) {
 /*
  * Compare a <= b.
  * Arguments:
- *     TypeTag type - Type of values being compared.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_cmp_lte(TypeTag type) {
+int VM::simd_cmp_lte(const Instruction& instruction) {
     int sp = stack.sp;
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
 
@@ -299,7 +354,7 @@ int VM::simd_cmp_lte(TypeTag type) {
         );
 
         _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -319,21 +374,21 @@ int VM::simd_cmp_lte(TypeTag type) {
 /*
  * Compare a > b.
  * Arguments:
- *     TypeTag type - Type of values being compared.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_cmp_gt(TypeTag type) {
+int VM::simd_cmp_gt(const Instruction& instruction) {
     int sp = stack.sp;
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
         __m128i result = _mm_cmplt_epi32(b, a);
 
         _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -353,15 +408,15 @@ int VM::simd_cmp_gt(TypeTag type) {
 /*
  * Compare a >= b.
  * Arguments:
- *     TypeTag type - Type of values being compared.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_cmp_gte(TypeTag type) {
+int VM::simd_cmp_gte(const Instruction& instruction) {
     int sp = stack.sp;
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
        
@@ -372,7 +427,7 @@ int VM::simd_cmp_gte(TypeTag type) {
         );
 
         _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -392,21 +447,21 @@ int VM::simd_cmp_gte(TypeTag type) {
 /*
  * Compare a == b.
  * Arguments:
- *     TypeTag type - Type of values being compared.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_cmp_eq(TypeTag type) {
+int VM::simd_cmp_eq(const Instruction& instruction) {
     int sp = stack.sp;
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
         __m128i result = _mm_cmpeq_epi32(a, b);
 
         _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -426,15 +481,15 @@ int VM::simd_cmp_eq(TypeTag type) {
 /*
  * Compare a != b.
  * Arguments:
- *     TypeTag type - Type of values being compared.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_cmp_ne(TypeTag type) {
+int VM::simd_cmp_ne(const Instruction& instruction) {
     int sp = stack.sp;
     if(sp < 1) return -1;
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
         
@@ -445,7 +500,7 @@ int VM::simd_cmp_ne(TypeTag type) {
         );
 
         _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
 
@@ -465,22 +520,22 @@ int VM::simd_cmp_ne(TypeTag type) {
 /*
  * Execute an AND instruction.
  * Arguments:
- *     TypeTag type - The types of values being operated on.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_and(TypeTag type) {
+int VM::simd_and(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 1) return -1;
 
-    if(type == BOOL) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+    if(instruction.type == BOOL) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].b);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].b);
 
         __m128i result = _mm_and_si128(a, b);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp].i32, result);
+        _mm_storeu_si128((__m128i *)stack.data[sp].b, result);
     } else {
         return -1;
     }
@@ -492,22 +547,22 @@ int VM::simd_and(TypeTag type) {
 /*
  * Execute an OR instruction.
  * Arguments:
- *     TypeTag type - The types of values being operated on.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_or(TypeTag type) {
+int VM::simd_or(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 1) return -1;
 
-    if(type == BOOL) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+    if(instruction.type == BOOL) {
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].b);
+        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].b);
 
         __m128i result = _mm_or_si128(a, b);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp].i32, result);
+        _mm_storeu_si128((__m128i *)stack.data[sp].b, result);
     } else {
         return -1;
     }
@@ -519,23 +574,23 @@ int VM::simd_or(TypeTag type) {
 /*
  * Execute a NOT instruction.
  * Arguments:
- *     TypeTag type - The types of values being operated on.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_not(TypeTag type) {
+int VM::simd_not(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 0) return -1;
 
-    if(type == BOOL) {
+    if(instruction.type == BOOL) {
         // Intel doesn't support direct NOT but XOR 1 is the same operation
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp].b);
         __m128i ones = _mm_set1_epi32(-1);
 
         __m128i result = _mm_xor_si128(a, ones);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp].i32, result);
+        _mm_storeu_si128((__m128i *)stack.data[sp].b, result);
     } else {
         return -1;
     }
@@ -546,18 +601,18 @@ int VM::simd_not(TypeTag type) {
 /*
  * Executes a SELECT instruction.
  * Arguments:
- *     TypeTag type - Return type of the SELECT condition.
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on succes, -1 on failure.
  */
-int VM::simd_select(TypeTag type) {
+int VM::simd_select(const Instruction& instruction) {
     int sp = stack.sp;
 
     if(sp < 2) return -1;
 
     __m128i cond = _mm_loadu_si128((__m128i *)stack.data[sp-2].b);
 
-    if(type == I32) {
+    if(instruction.type == I32) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
 
@@ -568,7 +623,7 @@ int VM::simd_select(TypeTag type) {
         );
 
         _mm_storeu_si128((__m128i *)stack.data[sp-2].i32, result);
-    } else if(type == F32) {
+    } else if(instruction.type == F32) {
         __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
         __m128 b = _mm_loadu_ps(stack.data[sp].f32);
         __m128 cond_ps = _mm_castsi128_ps(cond);
@@ -580,7 +635,7 @@ int VM::simd_select(TypeTag type) {
         );
 
         _mm_storeu_ps(stack.data[sp-2].f32, result);
-    } else if(type == BOOL) {
+    } else if(instruction.type == BOOL) {
         __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].b);
         __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].b);
 
@@ -615,10 +670,12 @@ static inline __m128i xorshift32(__m128i x) {
 
 /*
  * Generate a random float in the range [0.0, 1.0).
+ * Arguments:
+ *     const Instruction& instruction - Current context.
  * Returns:
  *     int - 0 on success, -1 on failure.
  */
-int VM::simd_rand() {
+int VM::simd_rand(const Instruction& instruction) {
     stack.sp++;
     int sp = stack.sp;
 
@@ -638,106 +695,51 @@ int VM::simd_rand() {
     return 0;
 }
 
+/* 
+ * Return from the VM execution.
+ * Arguments:
+ *     const Instruction& instruction - Current context.
+ * Returns:
+ *     int - 1 on success, -1 on failure.
+ */
+int VM::simd_return(const Instruction& instruction) {
+    // Bounds check
+    int sp = stack.sp;
+    if(sp < 0 || sp >= MAX_STACK) { 
+        retval.type = KERNEL_ERROR; 
+        return -1; 
+    }
+
+    // Aggregate the final return values
+    if(retval.type == KERNEL_I32) {
+        __m128i results = _mm_loadu_si128((__m128i *)stack.data[stack.sp].i32);
+        _mm_storeu_si128((__m128i *)retval.result_int, results);
+    } else if(retval.type == KERNEL_F32) {
+        __m128 results = _mm_loadu_ps(stack.data[stack.sp].f32);
+        _mm_storeu_ps(retval.result_float, results);
+    } else if(retval.type == KERNEL_BOOL) {
+        __m128i results = _mm_loadu_si128((__m128i *)stack.data[stack.sp].b);
+        _mm_storeu_si128((__m128i *)retval.result_bool, results);
+    } else {
+        return -1;
+    }
+
+    return 1;
+}
+
 /*
  * Instruction execution dispatcher.
  */
 VMReturnValue& VM::run() {
     while(true) {
-        Instruction instr = bytecode[pc];
-
-        switch(instr.opcode) {
-        case PUSH_CONST:
-            if(instr.type == I32) {
-                if(simd_push_const<int32_t>(instr.const_int) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            }
-            if(instr.type == F32) {
-                if(simd_push_const<float>(instr.const_float) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            }
-            if(instr.type == BOOL) {
-                if(simd_push_const<bool>(instr.const_bool) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            }
-            break;
-        case LOAD_VAR:
-            if(simd_load_var(instr.type, instr.slot) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case STORE_VAR:
-            if(simd_store_var(instr.type, instr.slot) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case ADD:
-            if(simd_add(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case SUB:
-            if(simd_sub(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case MUL:
-            if(simd_mul(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case DIV:
-            if(simd_div(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case MOD:
-            if(simd_mod(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case CMP_LT:
-            if(simd_cmp_lt(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case CMP_LTE:
-            if(simd_cmp_lte(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case CMP_GT:
-            if(simd_cmp_gt(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case CMP_GTE:
-            if(simd_cmp_gte(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case CMP_EQ:
-            if(simd_cmp_eq(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-        
-        case CMP_NE:
-            if(simd_cmp_ne(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case SELECT:
-            if(simd_select(instr.type) < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case RAND:
-            if(simd_rand() < 0) { retval.type = KERNEL_ERROR; return retval; }
-            break;
-
-        case RETURN:
-            // Bounds check
-            if(stack.sp < 0 || stack.sp >= MAX_STACK) { retval.type = KERNEL_ERROR; return retval; }
-
-            // Aggregate the final return values
-            if(retval.type == KERNEL_I32) {
-                __m128i results = _mm_loadu_si128((__m128i *)stack.data[stack.sp].i32);
-                _mm_storeu_si128((__m128i *)retval.result_int, results);
-            } else if(retval.type == KERNEL_F32) {
-                __m128 results = _mm_loadu_ps(stack.data[stack.sp].f32);
-                _mm_storeu_ps(retval.result_float, results);
-            } else if(retval.type == KERNEL_BOOL) {
-                __m128i results = _mm_loadu_si128((__m128i *)stack.data[stack.sp].b);
-                _mm_storeu_si128((__m128i *)retval.result_bool, results);
-            } else {
-                retval.type = KERNEL_ERROR;
-            }
-
+        const Instruction& instr = bytecode[pc];
+        int result = (this->*dispatch[instr.opcode])(instr);
+        if(result < 0) {
+            retval.type = KERNEL_ERROR;
+            return retval;
+        } else if(result > 0) {
             return retval;
         }
-
         pc++;
     }
 }
@@ -752,4 +754,13 @@ void VM::reset() {
     memset(&slots, 0, sizeof(slots));
     memset(&retval, 0, sizeof(retval));
     rng_state = _mm_set_epi32(0x12345678, 0x87654321, 0xCAFEBABE, 0xDEADBEEF);
+}
+
+/*
+ * Set the return type of the kernel being run on the VM.
+ * Arguments:
+ *     VMReturnType type - Return type of the kernel.
+ */
+void VM::set_return_type(VMReturnType type) {
+    this->retval.type = type;
 }
