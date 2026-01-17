@@ -5,7 +5,7 @@ OBJ = cpp/obj
 TEST = cpp/tests
 
 CXX=clang++
-CXXFLAGS = -I$(INC) -stdlib=libc++ -m$(VEC_TYPE) -D$(CPU_ARCH)
+CXXFLAGS = -I$(INC) -stdlib=libc++ -m$(ARCH)
 
 .PHONY: test clean
 

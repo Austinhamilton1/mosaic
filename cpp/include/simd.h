@@ -1,8 +1,6 @@
 #ifndef SIMD_H
 #define SIMD_H
 
-#ifdef ARCH_X86
-
 #ifdef __AVX2__
 #include <immintrin.h>
 
@@ -100,8 +98,6 @@
 
 #else
 #error "SIMD requires at least SSE4.1"
-#endif
-
 #endif
 
 #endif
