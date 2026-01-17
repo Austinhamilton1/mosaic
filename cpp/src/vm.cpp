@@ -1,8 +1,4 @@
-#include <smmintrin.h>
-
-#ifndef __SSE4_1__
-#error "This VM requires SSE4.1 support. Compile with -msse4.1"
-#endif
+#include "simd.h"
 
 #include "vm.h"
 
@@ -42,14 +38,14 @@ int VM::simd_push_const(const Instruction& instruction) {
     if(sp >= MAX_STACK) return -1;
 
     if(instruction.type == I32) {
-        __m128i const_vec = _mm_set1_epi32(instruction.const_int);
-        _mm_storeu_si128((__m128i *)stack.data[sp].i32, const_vec);
+        __veci const_vec = _vec_bcsti(instruction.const_int);
+        _vec_storei(stack.data[sp].i32, const_vec);
     } else if(instruction.type == F32) {
-        __m128 const_vec = _mm_set1_ps(instruction.const_float);
-        _mm_storeu_ps(stack.data[stack.sp].f32, const_vec);
+        __vecf const_vec = _vec_bcstf(instruction.const_float);
+        _vec_storef(stack.data[stack.sp].f32, const_vec);
     } else if(instruction.type == BOOL) {
-        __m128i const_vec = _mm_set1_epi32(instruction.const_bool ? -1 : 0);
-        _mm_storeu_si128((__m128i *)stack.data[sp].b, const_vec);
+        __veci const_vec = _vec_bcsti(instruction.const_bool ? -1 : 0);
+        _vec_storei(stack.data[sp].b, const_vec);
     }
     
     return 0;
@@ -69,19 +65,19 @@ int VM::simd_load_var(const Instruction& instruction) {
     if(instruction.slot >= MAX_SLOTS || instruction.slot < 0) return -1;
     
     if(instruction.type == I32) {
-        _mm_storeu_si128(
-            (__m128i *)stack.data[sp].i32, 
-            _mm_loadu_si128((__m128i *)slots.i32_slot[instruction.slot])
+        _vec_storei(
+            stack.data[sp].i32, 
+            _vec_loadi(slots.i32_slot[instruction.slot])
         );
     } else if(instruction.type == F32) {
-        _mm_storeu_ps(
+        _vec_storef(
             stack.data[sp].f32, 
-            _mm_loadu_ps(slots.f32_slot[instruction.slot])
+            _vec_loadf(slots.f32_slot[instruction.slot])
         );
     } else if(instruction.type == BOOL) {
-        _mm_storeu_si128(
-            (__m128i *)stack.data[sp].b, 
-            _mm_loadu_si128((__m128i *)slots.bool_slot[instruction.slot])
+        _vec_storei(
+            stack.data[sp].b, 
+            _vec_loadi(slots.bool_slot[instruction.slot])
         );
     } else {
         return -1;
@@ -104,19 +100,19 @@ int VM::simd_store_var(const Instruction& instruction) {
     if(instruction.slot >= MAX_SLOTS || instruction.slot < 0) return -1;
 
     if(instruction.type == I32) {
-        _mm_storeu_si128(
-            (__m128i *)slots.i32_slot[instruction.slot],
-            _mm_loadu_si128((__m128i *)stack.data[sp].i32)
+        _vec_storei(
+            slots.i32_slot[instruction.slot],
+            _vec_loadi(stack.data[sp].i32)
         );
     } else if(instruction.type == F32) {
-        _mm_storeu_ps(
+        _vec_storef(
             slots.f32_slot[instruction.slot],
-            _mm_loadu_ps(stack.data[sp].f32)
+            _vec_loadf(stack.data[sp].f32)
         );
     } else if(instruction.type == BOOL) {
-        _mm_storeu_si128(
-            (__m128i *)slots.bool_slot[instruction.slot],
-            _mm_loadu_si128((__m128i *)stack.data[sp].b)
+        _vec_storei(
+            slots.bool_slot[instruction.slot],
+            _vec_loadi(stack.data[sp].b)
         );
     } else {
         return -1;
@@ -139,19 +135,19 @@ int VM::simd_add(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
 
-        __m128i result = _mm_add_epi32(a, b);
+        __veci result = _vec_addi(a, b);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-1].i32, result);
+        _vec_storei(stack.data[sp-1].i32, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_add_ps(a, b);
+        __vecf result = _vec_addf(a, b);
 
-        _mm_storeu_ps(stack.data[sp-1].f32, result);
+        _vec_storef(stack.data[sp-1].f32, result);
     } else {
         return -1;
     }
@@ -173,19 +169,19 @@ int VM::simd_sub(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
 
-        __m128i result = _mm_sub_epi32(a, b);
+        __veci result = _vec_subi(a, b);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-1].i32, result);
+        _vec_storei(stack.data[sp-1].i32, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_sub_ps(a, b);
+        __vecf result = _vec_subf(a, b);
 
-        _mm_storeu_ps(stack.data[sp-1].f32, result);
+        _vec_storef(stack.data[sp-1].f32, result);
     } else {
         return -1;
     }
@@ -207,19 +203,19 @@ int VM::simd_mul(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
 
-        __m128i result = _mm_mullo_epi32(a, b);
+        __veci result = _vec_muli(a, b);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-1].i32, result);
+        _vec_storei(stack.data[sp-1].i32, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_mul_ps(a, b);
+        __vecf result = _vec_mulf(a, b);
 
-        _mm_storeu_ps(stack.data[sp-1].f32, result);
+        _vec_storef(stack.data[sp-1].f32, result);
     } else {
         return -1;
     }
@@ -252,12 +248,12 @@ int VM::simd_div(const Instruction& instruction) {
             stack.data[sp-1].i32[i] = a / b;
         }
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_div_ps(a, b);
+        __vecf result = _vec_divf(a, b);
 
-        _mm_storeu_ps(stack.data[sp-1].f32, result);
+        _vec_storef(stack.data[sp-1].f32, result);
     } else {
         return -1;
     }
@@ -309,20 +305,20 @@ int VM::simd_cmp_lt(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
-        __m128i result = _mm_cmplt_epi32(a, b);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
+        __veci result = _vec_cmplti(a, b);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+        _vec_storei(stack.data[sp-1].b, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_cmplt_ps(a, b);
+        __vecf result = _vec_cmpltf(a, b);
 
-        _mm_storeu_si128(
-            (__m128i *)stack.data[sp-1].b, 
-            _mm_castps_si128(result) 
+        _vec_storei(
+            stack.data[sp-1].b, 
+            _vec_castfi(result) 
         );
     } else {
         return -1;
@@ -344,24 +340,24 @@ int VM::simd_cmp_lte(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
 
-        __m128i ones = _mm_set1_epi32(-1);
-        __m128i result = _mm_xor_si128(
-            _mm_cmplt_epi32(b, a),
+        __veci ones = _vec_bcsti(-1);
+        __veci result = _vec_xori(
+            _vec_cmplti(b, a),
             ones
         );
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+        _vec_storei(stack.data[sp-1].b, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_cmple_ps(a, b);
-        _mm_storeu_si128(
-            (__m128i *)stack.data[sp-1].b,
-            _mm_castps_si128(result)
+        __vecf result = _vec_cmplef(a, b);
+        _vec_storei(
+            stack.data[sp-1].b,
+            _vec_castfi(result)
         );
     } else {
         return -1;
@@ -383,19 +379,19 @@ int VM::simd_cmp_gt(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
-        __m128i result = _mm_cmplt_epi32(b, a);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
+        __veci result = _vec_cmplti(b, a);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+        _vec_storei(stack.data[sp-1].b, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_cmpgt_ps(a, b);
-        _mm_storeu_si128(
-            (__m128i *)stack.data[sp-1].b,
-            _mm_castps_si128(result)
+        __vecf result = _vec_cmpgtf(a, b);
+        _vec_storei(
+            stack.data[sp-1].b,
+            _vec_castfi(result)
         );
     } else {
         return -1;
@@ -417,24 +413,24 @@ int VM::simd_cmp_gte(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
        
-        __m128i ones = _mm_set1_epi32(-1);
-        __m128i result = _mm_xor_si128(
-            _mm_cmplt_epi32(a, b),
+        __veci ones = _vec_bcsti(-1);
+        __veci result = _vec_xori(
+            _vec_cmplti(a, b),
             ones
         );
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+        _vec_storei(stack.data[sp-1].b, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_cmpge_ps(a, b);
-        _mm_storeu_si128(
-            (__m128i *)stack.data[sp-1].b,
-            _mm_castps_si128(result)
+        __vecf result = _vec_cmpgef(a, b);
+        _vec_storei(
+            stack.data[sp-1].b,
+            _vec_castfi(result)
         );
     } else {
         return -1;
@@ -456,19 +452,19 @@ int VM::simd_cmp_eq(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
-        __m128i result = _mm_cmpeq_epi32(a, b);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
+        __veci result = _vec_cmpeqi(a, b);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+        _vec_storei(stack.data[sp-1].b, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_cmpeq_ps(a, b);
-        _mm_storeu_si128(
-            (__m128i *)stack.data[sp-1].b,
-            _mm_castps_si128(result)
+        __vecf result = _vec_cmpeqf(a, b);
+        _vec_storei(
+            stack.data[sp-1].b,
+            _vec_castfi(result)
         );
     } else {
         return -1;
@@ -490,24 +486,24 @@ int VM::simd_cmp_ne(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
         
-        __m128i ones = _mm_set1_epi32(-1);
-        __m128i result = _mm_xor_si128(
-            _mm_cmpeq_epi32(b, a),
+        __veci ones = _vec_bcsti(-1);
+        __veci result = _vec_xori(
+            _vec_cmpeqi(b, a),
             ones
         );
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-1].b, result);
+        _vec_storei(stack.data[sp-1].b, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
 
-        __m128 result = _mm_cmpneq_ps(a, b);
-        _mm_storeu_si128(
-            (__m128i *)stack.data[sp-1].b,
-            _mm_castps_si128(result)
+        __vecf result = _vec_cmpnef(a, b);
+        _vec_storei(
+            stack.data[sp-1].b,
+            _vec_castfi(result)
         );
     } else {
         return -1;
@@ -530,12 +526,12 @@ int VM::simd_and(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == BOOL) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].b);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].b);
+        __veci a = _vec_loadi(stack.data[sp-1].b);
+        __veci b = _vec_loadi(stack.data[sp].b);
 
-        __m128i result = _mm_and_si128(a, b);
+        __veci result = _vec_andi(a, b);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp].b, result);
+        _vec_storei(stack.data[sp-1].b, result);
     } else {
         return -1;
     }
@@ -557,12 +553,12 @@ int VM::simd_or(const Instruction& instruction) {
     if(sp < 1) return -1;
 
     if(instruction.type == BOOL) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].b);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].b);
+        __veci a = _vec_loadi(stack.data[sp-1].b);
+        __veci b = _vec_loadi(stack.data[sp].b);
 
-        __m128i result = _mm_or_si128(a, b);
+        __veci result = _vec_ori(a, b);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp].b, result);
+        _vec_storei(stack.data[sp-1].b, result);
     } else {
         return -1;
     }
@@ -585,12 +581,12 @@ int VM::simd_not(const Instruction& instruction) {
 
     if(instruction.type == BOOL) {
         // Intel doesn't support direct NOT but XOR 1 is the same operation
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp].b);
-        __m128i ones = _mm_set1_epi32(-1);
+        __veci a = _vec_loadi(stack.data[sp].b);
+        __veci ones = _vec_bcsti(-1);
 
-        __m128i result = _mm_xor_si128(a, ones);
+        __veci result = _vec_xori(a, ones);
 
-        _mm_storeu_si128((__m128i *)stack.data[sp].b, result);
+        _vec_storei(stack.data[sp].b, result);
     } else {
         return -1;
     }
@@ -610,42 +606,42 @@ int VM::simd_select(const Instruction& instruction) {
 
     if(sp < 2) return -1;
 
-    __m128i cond = _mm_loadu_si128((__m128i *)stack.data[sp-2].b);
+    __veci cond = _vec_loadi(stack.data[sp-2].b);
 
     if(instruction.type == I32) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].i32);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].i32);
+        __veci a = _vec_loadi(stack.data[sp-1].i32);
+        __veci b = _vec_loadi(stack.data[sp].i32);
 
         // Select statement is (cond) ? a : b
-        __m128i result = _mm_or_si128(
-            _mm_and_si128(cond, a),
-            _mm_andnot_si128(cond, b)
+        __veci result = _vec_ori(
+            _vec_andi(cond, a),
+            _vec_andnoti(cond, b)
         );
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-2].i32, result);
+        _vec_storei(stack.data[sp-2].i32, result);
     } else if(instruction.type == F32) {
-        __m128 a = _mm_loadu_ps(stack.data[sp-1].f32);
-        __m128 b = _mm_loadu_ps(stack.data[sp].f32);
-        __m128 cond_ps = _mm_castsi128_ps(cond);
+        __vecf a = _vec_loadf(stack.data[sp-1].f32);
+        __vecf b = _vec_loadf(stack.data[sp].f32);
+        __vecf cond_ps = _vec_castif(cond);
 
         // Select statement is (cond) ? a : b
-        __m128 result = _mm_or_ps(
-            _mm_and_ps(cond_ps, a),
-            _mm_andnot_ps(cond_ps, b)
+        __vecf result = _vec_orf(
+            _vec_andf(cond_ps, a),
+            _vec_andnotf(cond_ps, b)
         );
 
-        _mm_storeu_ps(stack.data[sp-2].f32, result);
+        _vec_storef(stack.data[sp-2].f32, result);
     } else if(instruction.type == BOOL) {
-        __m128i a = _mm_loadu_si128((__m128i *)stack.data[sp-1].b);
-        __m128i b = _mm_loadu_si128((__m128i *)stack.data[sp].b);
+        __veci a = _vec_loadi(stack.data[sp-1].b);
+        __veci b = _vec_loadi(stack.data[sp].b);
 
         // Select statement is (cond) ? a : b
-        __m128i result = _mm_or_si128(
-            _mm_and_si128(cond, a),
-            _mm_andnot_si128(cond, b)
+        __veci result = _vec_ori(
+            _vec_andi(cond, a),
+            _vec_andnoti(cond, b)
         );
 
-        _mm_storeu_si128((__m128i *)stack.data[sp-2].b, result);
+        _vec_storei(stack.data[sp-2].b, result);
     } else {
         return -1;
     }
@@ -657,14 +653,14 @@ int VM::simd_select(const Instruction& instruction) {
 /*
  * Random number generator that implements xorshift32.
  * Arguments:
- *     __m128i x - Seed.
+ *     __veci x - Seed.
  * Returns:
- *     __m128i - Random number.
+ *     __veci - Random number.
  */
-static inline __m128i xorshift32(__m128i x) {
-    x = _mm_xor_si128(x, _mm_slli_epi32(x, 13));
-    x = _mm_xor_si128(x, _mm_srli_epi32(x, 17));
-    x = _mm_xor_si128(x, _mm_slli_epi32(x, 5));
+static inline __veci xorshift32(__veci x) {
+    x = _vec_xori(x, _vec_sli(x, 13));
+    x = _vec_xori(x, _vec_sri(x, 17));
+    x = _vec_xori(x, _vec_sli(x, 5));
     return x;
 }
 
@@ -684,13 +680,13 @@ int VM::simd_rand(const Instruction& instruction) {
     // Advance RNG
     rng_state = xorshift32(rng_state);
 
-    __m128i mantissa = _mm_srli_epi32(rng_state, 9);    // Keep 23 bits
-    __m128i one = _mm_set1_epi32(0x3F800000);           // 1.0f
+    __veci mantissa = _vec_sri(rng_state, 9);    // Keep 23 bits
+    __veci one = _vec_bcsti(0x3F800000);           // 1.0f
 
-    __m128 f = _mm_castsi128_ps(_mm_or_si128(mantissa, one));
-    f = _mm_sub_ps(f, _mm_set1_ps(1.0f));
+    __vecf f = _vec_castif(_vec_ori(mantissa, one));
+    f = _vec_subf(f, _vec_bcstf(1.0f));
 
-    _mm_storeu_ps(stack.data[sp].f32, f);
+    _vec_storef(stack.data[sp].f32, f);
 
     return 0;
 }
@@ -712,14 +708,14 @@ int VM::simd_return(const Instruction& instruction) {
 
     // Aggregate the final return values
     if(retval.type == KERNEL_I32) {
-        __m128i results = _mm_loadu_si128((__m128i *)stack.data[stack.sp].i32);
-        _mm_storeu_si128((__m128i *)retval.result_int, results);
+        __veci results = _vec_loadi(stack.data[stack.sp].i32);
+        _vec_storei(retval.result_int, results);
     } else if(retval.type == KERNEL_F32) {
-        __m128 results = _mm_loadu_ps(stack.data[stack.sp].f32);
-        _mm_storeu_ps(retval.result_float, results);
+        __vecf results = _vec_loadf(stack.data[stack.sp].f32);
+        _vec_storef(retval.result_float, results);
     } else if(retval.type == KERNEL_BOOL) {
-        __m128i results = _mm_loadu_si128((__m128i *)stack.data[stack.sp].b);
-        _mm_storeu_si128((__m128i *)retval.result_bool, results);
+        __veci results = _vec_loadi(stack.data[stack.sp].b);
+        _vec_storei(retval.result_bool, results);
     } else {
         return -1;
     }
@@ -753,7 +749,9 @@ void VM::reset() {
     stack.sp = -1;
     memset(&slots, 0, sizeof(slots));
     memset(&retval, 0, sizeof(retval));
-    rng_state = _mm_set_epi32(0x12345678, 0x87654321, 0xCAFEBABE, 0xDEADBEEF);
+    int fd = open("/dev/random", O_RDONLY);
+    read(fd, &rng_seed, sizeof(rng_seed));
+    rng_state = _vec_loadi(rng_seed);
 }
 
 /*

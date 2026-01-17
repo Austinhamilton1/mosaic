@@ -2,10 +2,11 @@
 #define VM_H
 
 #include <stdint.h>
-#include <smmintrin.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include "simd.h"
 
-constexpr int LANES = 4;
 constexpr int MAX_STACK = 64;
 constexpr int MAX_SLOTS = 32;
 
@@ -108,7 +109,8 @@ private:
     Stack stack;
     Slots slots;
 
-    __m128i rng_state;
+    uint32_t rng_seed[LANES];
+    __veci rng_state;
 
     VMReturnValue retval;
 
@@ -156,7 +158,9 @@ public:
             stack.sp = -1;
             memset(&slots, 0, sizeof(slots));
             memset(&retval, 0, sizeof(retval));
-            rng_state = _mm_set_epi32(0x12345678, 0x87654321, 0xCAFEBABE, 0xDEADBEEF);
+            int fd = open("/dev/random", O_RDONLY);
+            read(fd, &rng_seed, sizeof(rng_seed));
+            rng_state = _vec_loadi(rng_seed);
         }
     ~VM() = default; 
 

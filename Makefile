@@ -5,7 +5,7 @@ OBJ = cpp/obj
 TEST = cpp/tests
 
 CXX=clang++
-CXXFLAGS = -I$(INC) -stdlib=libc++
+CXXFLAGS = -I$(INC) -stdlib=libc++ -m$(VEC_TYPE) -D$(CPU_ARCH)
 
 .PHONY: test clean
 
@@ -18,7 +18,7 @@ $(OBJ)/x86_test_vm.o: $(SRC)/vm_test.cpp | $(OBJ)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 $(OBJ)/vm.o: $(SRC)/vm.cpp | $(OBJ)
-	$(CXX) $(CXXFLAGS) -msse4.1 -DARCH_X86 -c -o $@ $<
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 $(OBJ):
 	mkdir -p $@

@@ -991,6 +991,345 @@ bool invalid_cmp_tests() {
     return true;
 }
 
+/* AND test. */
+bool and_test() {
+    /* true and true */
+    Instruction bytecode_11[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = AND, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    auto vm = VM(bytecode_11);
+    vm.set_return_type(KERNEL_BOOL);
+    auto result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL))  return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == -1)) return false;
+    }
+
+    /* true and false */
+    Instruction bytecode_10[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = AND, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_10);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL))  return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == 0)) return false;
+    }
+
+    /* false and true */
+    Instruction bytecode_01[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = AND, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_01);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL))  return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == 0)) return false;
+    }
+
+
+    /* false and false */
+    Instruction bytecode_00[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = AND, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_00);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL))  return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == 0)) return false;
+    }
+
+    return true;
+}
+
+/* OR test. */
+bool or_test() {
+    /* true and true */
+    Instruction bytecode_11[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = OR, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    auto vm = VM(bytecode_11);
+    vm.set_return_type(KERNEL_BOOL);
+    auto result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL))  return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == -1)) return false;
+    }
+
+    /* true and false */
+    Instruction bytecode_10[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = OR, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_10);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL))  return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == -1)) return false;
+    }
+
+    /* false and true */
+    Instruction bytecode_01[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = OR, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_01);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL))  return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == -1)) return false;
+    }
+
+
+    /* false and false */
+    Instruction bytecode_00[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = OR, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_00);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL))  return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == 0)) return false;
+    }
+
+    return true;
+}
+
+/* NOT test. */
+bool not_test() {
+    /* Not true */
+    Instruction bytecode_1[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = NOT, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    auto vm = VM(bytecode_1);
+    vm.set_return_type(KERNEL_BOOL);
+    auto result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL)) return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == 0)) return false;
+    }
+
+    /* Not false */
+    Instruction bytecode_0[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = NOT, .type = BOOL },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_0);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_BOOL)) return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_bool[i] == -1)) return false;
+    }
+
+    return true;
+}
+
+/* Ensure invalid logic operations return an error. */
+bool invalid_logic() {
+    /* Logic with anything besides bools should error. */
+    Instruction bytecode_invalid_and_int[] = {
+        { .opcode = PUSH_CONST, .type = I32, .const_int = 5 },
+        { .opcode = PUSH_CONST, .type = I32, .const_int = 5 },
+        { .opcode = AND, .type = I32 },
+        { .opcode = RETURN },
+    };
+
+    auto vm = VM(bytecode_invalid_and_int);
+    vm.set_return_type(KERNEL_BOOL);
+    auto result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_ERROR)) return false;
+
+    Instruction bytecode_invalid_and_float[] = {
+        { .opcode = PUSH_CONST, .type = F32, .const_float = 5.0f },
+        { .opcode = PUSH_CONST, .type = F32, .const_float = 5.0f },
+        { .opcode = AND, .type = F32 },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_invalid_and_float);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_ERROR)) return false;
+
+    Instruction bytecode_invalid_or_int[] = {
+        { .opcode = PUSH_CONST, .type = I32, .const_int = 5 },
+        { .opcode = PUSH_CONST, .type = I32, .const_int = 5 },
+        { .opcode = OR, .type = I32 },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_invalid_or_int);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_ERROR)) return false;
+
+    Instruction bytecode_invalid_or_float[] = {
+        { .opcode = PUSH_CONST, .type = F32, .const_float = 5.0f },
+        { .opcode = PUSH_CONST, .type = F32, .const_float = 5.0f },
+        { .opcode = OR, .type = F32 },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_invalid_or_float);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_ERROR)) return false;
+
+    Instruction bytecode_invalid_not_int[] = {
+        { .opcode = PUSH_CONST, .type = I32, .const_int = 5 },
+        { .opcode = NOT, .type = I32 },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_invalid_not_int);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_ERROR)) return false;
+
+    Instruction bytecode_invalid_not_float[] = {
+        { .opcode = PUSH_CONST, .type = F32, .const_float = 5.0f },
+        { .opcode = NOT, .type = F32 },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_invalid_not_float);
+    vm.set_return_type(KERNEL_BOOL);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_ERROR)) return false;
+
+    return true;
+}
+
+/* SELECT test. */
+bool select_test() {
+    Instruction bytecode_true[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = true },
+        { .opcode = PUSH_CONST, .type = I32, .const_int = 6 },
+        { .opcode = PUSH_CONST, .type = I32, .const_int = -6 },
+        { .opcode = SELECT, .type = I32 },
+        { .opcode = RETURN },
+    };
+
+    auto vm = VM(bytecode_true);
+    vm.set_return_type(KERNEL_I32);
+    auto result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_I32)) return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_int[i] == 6)) return false;
+    }
+
+    Instruction bytecode_false[] = {
+        { .opcode = PUSH_CONST, .type = BOOL, .const_bool = false },
+        { .opcode = PUSH_CONST, .type = I32, .const_int = 6 },
+        { .opcode = PUSH_CONST, .type = I32, .const_int = -6 },
+        { .opcode = SELECT, .type = I32 },
+        { .opcode = RETURN },
+    };
+
+    vm = VM(bytecode_false);
+    vm.set_return_type(KERNEL_I32);
+    result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_I32)) return false;
+
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_int[i] == -6)) return false;
+    }
+
+    return true;
+}
+
+/* Random test */
+bool random_test() {
+    Instruction bytecode[] = {
+        { .opcode = RAND },
+        { .opcode = RETURN },
+    };
+
+    auto vm = VM(bytecode);
+    vm.set_return_type(KERNEL_F32);
+    auto result = vm.run();
+
+    if(Tester::assert_fail(result.type == KERNEL_F32)) return false;
+
+    /* RAND should return a number in [0.0, 1.0) */
+    for(int i = 0; i < LANES; i++) {
+        if(Tester::assert_fail(result.result_float[i] < 1.0f && result.result_float[i] >= 0.0f)) return false;
+    }
+
+    return true;
+}
+
 /*
  * Run several tests on the VM.
  */
@@ -1019,6 +1358,18 @@ int main(int argc, char **argv) {
     test_suite.add_test("CMP_EQ test", compare_eq_test);
     test_suite.add_test("CMP_NE test", compare_ne_test);
     test_suite.add_test("Invalid CMP_* test", invalid_cmp_tests);
+
+    // Logical operations tests
+    test_suite.add_test("AND test", and_test);
+    test_suite.add_test("OR test", or_test);
+    test_suite.add_test("NOT test", not_test);
+    test_suite.add_test("Invalid logic test", invalid_logic);
+
+    // Select operation test
+    test_suite.add_test("SELECT test", select_test);
+
+    // RAND operation test
+    test_suite.add_test("RAND test", random_test);
 
     bool passed = test_suite.run_tests(true);
 
